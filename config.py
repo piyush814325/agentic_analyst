@@ -32,19 +32,23 @@ if not SUPABASE_ANON_KEY:
     logger.warning("SUPABASE_ANON_KEY not found in environment variables")
 
 # PostgreSQL Database Configuration (Supabase)
-# Prefer DATABASE_URL when explicitly provided; otherwise allow server-side projects to use
-# a direct Postgres connection string as a fallback.
+# Prefer a real database URL from Supabase. Do not silently fall back to localhost.
 DB_CONNECTION_STRING = (
     os.getenv("DATABASE_URL")
     or os.getenv("SUPABASE_DB_URL")
-    or "postgresql+psycopg2://postgres:password@localhost:5432/postgres"
+    or None
 )
 
 # Ensure connection string uses psycopg2 driver
 if DB_CONNECTION_STRING and "postgresql://" in DB_CONNECTION_STRING:
-    # Replace postgresql:// with postgresql+psycopg2:// for SQLAlchemy
     DB_CONNECTION_STRING = DB_CONNECTION_STRING.replace(
         "postgresql://", "postgresql+psycopg2://"
+    )
+
+if not DB_CONNECTION_STRING:
+    logger.warning(
+        "No DATABASE_URL or SUPABASE_DB_URL configured. "
+        "Add the Supabase connection string from Settings -> Database -> Connection string -> URI."
     )
 
 # Application Configuration

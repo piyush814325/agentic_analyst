@@ -21,6 +21,12 @@ class DatabaseManager:
     @classmethod
     def get_engine(cls):
         """Get or create the SQLAlchemy engine with connection pooling."""
+        if not DB_CONNECTION_STRING:
+            logger.warning(
+                "Database is not configured. Add DATABASE_URL from Supabase Settings -> Database -> Connection string -> URI."
+            )
+            return None
+
         if cls._engine is None:
             try:
                 connect_args = {}
@@ -36,7 +42,6 @@ class DatabaseManager:
                     echo=APP_DEBUG,
                     connect_args=connect_args,
                 )
-                # Test connection
                 with cls._engine.connect() as conn:
                     conn.execute(text("SELECT 1"))
                 logger.info("Database engine initialized and connection tested successfully")

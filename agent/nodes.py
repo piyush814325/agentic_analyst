@@ -204,12 +204,12 @@ Examples:
 
 def is_database_related_question(query: str) -> bool:
     """
-    Classify if a question is database-related or out-of-scope.
-    Quick validation first, then uses LLM for nuanced classification.
+    Use LLM to classify if a question is database-related or out-of-scope.
+    Single reliable agent instead of keyword matching.
     
     Returns True if database-related, False if out-of-scope.
     """
-    logger.info(f"Classifying question: {query[:100]}")
+    logger.info(f"Classifying question with LLM: {query[:100]}")
     
     # Quick validation - very short/invalid inputs are out-of-scope
     if not _is_valid_input(query):
@@ -217,35 +217,34 @@ def is_database_related_question(query: str) -> bool:
         return False
     
     try:
-        classification_prompt = """You are a question classifier for an Agentic SQL Data Analyst.
+        classification_prompt = """You are an expert question classifier for a SQL Data Analysis system.
 
-Classify the user's question as either:
-- "DATABASE": About analyzing data, SQL queries, database content, data analysis from uploaded files, specific data requests, insights from data
-- "OUT-OF-SCOPE": General knowledge, general advice, philosophical questions, personal topics, or anything not related to data/database analysis
+Your job: Determine if the user's question is asking about DATA/DATABASE analysis or something else.
 
-Respond with ONLY "DATABASE" or "OUT-OF-SCOPE"
+RESPOND WITH ONLY ONE WORD: "DATABASE" or "OUT-OF-SCOPE"
 
-Examples of DATABASE questions:
-- "Show me sales data"
-- "Analyze my customer data"
-- "What are the top products?"
-- "Find records where price > 100"
-- "Generate a report from my data"
-- "How many customers do we have?"
-- "Create a summary of this data"
+RULES:
+1. DATABASE questions: Questions asking to retrieve, analyze, find, show, list, get, display, or provide information FROM A DATASET
+   - "Tell me the release date of Hawaa Hawaai"
+   - "Which movie earned more money"
+   - "Show me all movies from 2020"
+   - "What is the budget of X?"
+   - "Find movies with budget > 100"
+   - These are DATA RETRIEVAL questions - they ask for SPECIFIC INFORMATION from data
 
-Examples of OUT-OF-SCOPE questions:
-- "What should I eat today?"
-- "Tell me about history"
-- "How to learn Python in general?" (general learning, not analyzing data)
-- "What's the weather?" (general knowledge)
-- "hlo" or "asdfgh" (gibberish)
-- "Tell me a joke"
-- "What is love?" (philosophical)"""
+2. OUT-OF-SCOPE questions: Everything else
+   - General knowledge questions (history, science, weather)
+   - Jokes, poems, advice
+   - How-to tutorials or learning requests
+   - Philosophy or personal opinions
+   - Questions NOT asking for information from a dataset
+
+REMEMBER: If the user is asking to retrieve or analyze SPECIFIC INFORMATION from their data, it is DATABASE.
+If they're asking general knowledge or anything unrelated to retrieving data, it is OUT-OF-SCOPE."""
 
         messages = [
             SystemMessage(content=classification_prompt),
-            HumanMessage(content=f"Classify: {query}")
+            HumanMessage(content=query)
         ]
         
         response = llm.invoke(messages)
@@ -257,13 +256,14 @@ Examples of OUT-OF-SCOPE questions:
         
         classification = content.strip().upper() if isinstance(content, str) else str(content).upper()
         
+        # Parse response - look for DATABASE or OUT-OF-SCOPE
         is_db_related = "DATABASE" in classification
-        logger.info(f"Question classified as: {'DATABASE' if is_db_related else 'OUT-OF-SCOPE'}")
+        logger.info(f"LLM classification: {classification.strip()} → {'DATABASE' if is_db_related else 'OUT-OF-SCOPE'}")
         
         return is_db_related
         
     except Exception as e:
-        logger.warning(f"Error classifying question: {e}. Assuming database-related.")
+        logger.warning(f"Error in LLM classification: {e}. Defaulting to DATABASE.")
         return True  # Default to database-related on error
 
 
@@ -426,7 +426,7 @@ def schema_inspector(state: AgentState) -> AgentState:
 
 def sql_generator(state: AgentState) -> AgentState:
     """
-    Node 2: Generate MySQL-compliant SQL from user query.
+    Node 2: Generate PostgreSQL-compliant SQL from user query.
     Uses Groq LLM to convert natural language to SQL.
     """
     logger.info("Entering sql_generator node")
@@ -436,12 +436,12 @@ def sql_generator(state: AgentState) -> AgentState:
         schema = state["table_schema"]
 
         # Build prompt for SQL generation
-        system_prompt = """You are an expert MySQL database analyst. Your task is to write ONE pure MySQL statement — SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, TRUNCATE, or REPLACE — whichever matches what the user is asking for.
+        system_prompt = """You are an expert PostgreSQL database analyst. Your task is to write ONE pure PostgreSQL statement — SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, TRUNCATE, or REPLACE — whichever matches what the user is asking for.
 
 CRITICAL RULES:
-1. Write ONLY valid MySQL syntax
-2. Use backticks around table and column names: `table_name`, `column_name`
-3. Use MySQL specific keywords: LIMIT (not TOP), DATE_FORMAT for dates, GROUP_CONCAT for string agg
+1. Write ONLY valid PostgreSQL syntax
+2. Use double quotes around table and column names if needed: "table_name", "column_name". Prefer lowercase names without quotes if they exist as-is in the schema.
+3. Use PostgreSQL specific keywords: LIMIT (for result limits), to_char() for date formatting, string_agg() for string aggregation
 4. Do NOT wrap the query in markdown code blocks (no ```sql)
 5. Return ONLY ONE pure SQL statement - NO multiple queries, and no semicolons separating statements
 6. If you need to combine SELECT results, use UNION or UNION ALL within that SINGLE query
@@ -449,18 +449,20 @@ CRITICAL RULES:
 8. Choose the statement type that actually matches the request: reads → SELECT, adding rows → INSERT, changing rows → UPDATE, removing rows → DELETE, schema changes → CREATE/ALTER/DROP/TRUNCATE
 
 When writing queries:
-- Wrap all identifiers (table/column names) in backticks
-- Use MySQL date functions: DATE(), DATE_FORMAT(), STR_TO_DATE()
-- Use LIKE for pattern matching
+- Use column/table names exactly as shown in the schema (case-sensitive in PostgreSQL)
+- Use double quotes only if the identifier has special characters or mixed case
+- Use PostgreSQL date functions: now(), to_char(date_col, 'YYYY-MM-DD'), to_date(string, 'YYYY-MM-DD')
+- Use LIKE for pattern matching (case-sensitive; use ILIKE for case-insensitive)
 - Use GROUP BY and HAVING for aggregations
 - Use LIMIT for result limits on SELECT
+- Use string_agg() instead of GROUP_CONCAT
 - NEVER generate multiple statements separated by semicolons"""
 
         user_prompt = f"""Based on this database schema:
 
 {schema}
 
-Convert this natural language request into a single MySQL statement:
+Convert this natural language request into a single PostgreSQL statement:
 "{user_query}"
 
 Return ONLY the pure SQL statement, no explanation or markdown formatting."""
@@ -584,7 +586,7 @@ def sql_executor(state: AgentState) -> AgentState:
 def self_corrector(state: AgentState) -> AgentState:
     """
     Node 4: Self-correct invalid SQL based on error message.
-    Learns from MySQL errors and rewrites the query.
+    Learns from PostgreSQL errors and rewrites the query.
     """
     logger.info("Entering self_corrector node")
 
@@ -596,18 +598,18 @@ def self_corrector(state: AgentState) -> AgentState:
         retry_count = state["retry_count"]
 
         # Build correction prompt
-        system_prompt = """You are an expert MySQL database analyst specializing in error correction. 
+        system_prompt = """You are an expert PostgreSQL database analyst specializing in error correction. 
 Your task is to fix SQL statements that have errors.
 
 CRITICAL RULES:
-1. Write ONLY valid MySQL syntax
-2. Use backticks around all identifiers: `table_name`, `column_name`
-3. Use MySQL specific functions and syntax
+1. Write ONLY valid PostgreSQL syntax
+2. Use double quotes around identifiers only if needed: "table_name", "column_name". Prefer lowercase unquoted names.
+3. Use PostgreSQL specific functions and syntax (to_char, string_agg, ILIKE, etc.)
 4. Do NOT wrap output in markdown code blocks
 5. Return the corrected pure SQL statement only — keep the same statement type (SELECT/INSERT/UPDATE/DELETE/CREATE/ALTER/DROP/TRUNCATE/REPLACE) as the original unless the error specifically requires changing it
 6. Preserve the original WHERE clause intent for UPDATE/DELETE — never widen it to affect more rows than intended"""
 
-        user_prompt = f"""Fix this MySQL query that has an error.
+        user_prompt = f"""Fix this PostgreSQL query that has an error.
 
 Database schema:
 {schema}
@@ -620,7 +622,7 @@ Previous SQL (with error):
 Error message:
 {error_message}
 
-Analyze the error and provide the CORRECTED MySQL statement (same type as the original — do NOT change an UPDATE to a SELECT, etc.).
+Analyze the error and provide the CORRECTED PostgreSQL statement (same type as the original — do NOT change an UPDATE to a SELECT, etc.).
 Return ONLY the pure SQL, no explanation or markdown."""
 
         messages = [

@@ -48,6 +48,14 @@ venv.bak/
 
 # Temporary files
 *.tmp
+tempCodeRunnerFile.bat
+
+# Chainlit files
+.files/
+.chainlit/
+
+# Local test outputs
+*.log
 *.bak
 .tmp/
 temp/

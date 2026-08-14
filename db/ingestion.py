@@ -158,7 +158,27 @@ class DataIngestionEngine:
                 TableNameSanitizer.sanitize_name(col, is_table=False)
                 for col in df.columns
             ]
-            
+
+            # Try to auto-detect datetime-like columns and convert them to datetime
+            for col in df_sanitized.columns:
+                try:
+                    series = df_sanitized[col]
+                    # Only attempt on object/string columns
+                    if series.dtype == 'object':
+                        # Strip whitespace
+                        series_str = series.astype(str).str.strip()
+                        # Try parsing with dayfirst to accommodate formats like '9-May-14' or '09-05-2014'
+                        parsed = pd.to_datetime(series_str, dayfirst=True, errors='coerce', infer_datetime_format=True)
+                        non_null = parsed.notna().sum()
+                        ratio = non_null / len(parsed) if len(parsed) > 0 else 0
+                        # If a majority of values parsed to datetimes, keep the conversion
+                        if ratio >= 0.5:
+                            df_sanitized[col] = parsed
+                            logger.info(f"Auto-detected datetime column '{col}' ({non_null}/{len(parsed)} parsed)")
+                except Exception:
+                    # Non-fatal - leave column as-is
+                    continue
+
             # Build schema dictionary for reference
             schema_dict = {}
             for col in df_sanitized.columns:

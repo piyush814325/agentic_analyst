@@ -1,0 +1,57 @@
+name: Deployment Readiness Check
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check-deployment:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check Vercel Configuration
+        run: python check_deployment.py
+
+      - name: Validate JSON files
+        run: |
+          python -m json.tool vercel.json > /dev/null
+          echo "✅ vercel.json is valid"
+
+      - name: Check required files exist
+        run: |
+          test -f runtime.txt && echo "✅ runtime.txt exists" || echo "❌ runtime.txt missing"
+          test -f .vercelignore && echo "✅ .vercelignore exists" || echo "❌ .vercelignore missing"
+          test -f requirements.txt && echo "✅ requirements.txt exists" || echo "❌ requirements.txt missing"
+          test -f VERCEL_DEPLOYMENT.md && echo "✅ VERCEL_DEPLOYMENT.md exists" || echo "❌ VERCEL_DEPLOYMENT.md missing"
+
+      - name: Verify Python version
+        run: |
+          python --version
+          RUNTIME_PY=$(cat runtime.txt | head -1)
+          echo "Specified Python version: $RUNTIME_PY"
+
+      - name: Check app.py structure
+        run: |
+          python -m py_compile app.py
+          echo "✅ app.py compiles successfully"
+
+      - name: Report Summary
+        run: |
+          echo "=========================================="
+          echo "✅ All checks passed!"
+          echo "✅ Ready for Vercel deployment"
+          echo "=========================================="

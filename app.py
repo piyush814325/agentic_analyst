@@ -42,8 +42,14 @@ async def on_chat_start():
     logger.info("Chat session started")
 
     try:
-        # Initialize database connection
-        DatabaseManager.get_engine()
+        # Initialize database connection if configured; otherwise continue in a degraded mode.
+        db_engine = DatabaseManager.get_engine()
+        if db_engine is None:
+            logger.warning("Database not configured; app started without live SQL connection.")
+            await cl.Message(
+                content="⚠️ Database not configured yet. Add your Supabase DATABASE_URL in .env to enable SQL analysis and file uploads.",
+                author="System"
+            ).send()
         
         # Inject custom script to add button labels and tooltips
         # This enhances the UI with proper labels for all buttons
@@ -352,6 +358,13 @@ async def on_message(message: cl.Message):
         # Get agent graph
         agent = get_agent_graph()
 
+        # Show thinking animation
+        thinking_msg = cl.Message(
+            content="🤔 **Analyzing your question...**\n\n`⏳ Generating SQL... → Executing query... → Gathering insights...`",
+            author="SQL Analyst"
+        )
+        await thinking_msg.send()
+
         def run_agent_sync():
             """Run the LangGraph stream synchronously and return the final state."""
             last_state = None
@@ -363,6 +376,9 @@ async def on_message(message: cl.Message):
 
         # Execute agent without showing internal progress steps in the chat UI.
         final_state = await asyncio.to_thread(run_agent_sync)
+
+        # Remove thinking message
+        await thinking_msg.remove()
 
         # Display results
         if final_state:
@@ -409,15 +425,13 @@ async def display_results(state: AgentState):
 
         if query_result and len(query_result) > 0:
             try:
-                # Convert to DataFrame for display
+                # Convert to DataFrame for proper formatting
                 df = pd.DataFrame(query_result)
 
-                # FIX: raw datetime/Decimal/other non-primitive objects
-                # render as opaque repr strings (or inconsistently) in the
-                # grid — normalize them so the table is actually readable.
+                # Normalize data types for display
                 for col in df.columns:
                     if pd.api.types.is_datetime64_any_dtype(df[col]):
-                        df[col] = df[col].dt.strftime("%Y-%m-%d %H:%M:%S")
+                        df[col] = df[col].dt.strftime("%Y-%m-%d")
                     else:
                         sample = df[col].dropna()
                         if len(sample) > 0 and not isinstance(
@@ -425,47 +439,59 @@ async def display_results(state: AgentState):
                         ):
                             df[col] = df[col].astype(str)
 
-                # Create Chainlit dataframe element
-                data_msg = cl.Message(
-                    content="**📊 Query Results (Table View):**",
+                # Build markdown table
+                results_text = "**📊 Query Results:**\n\n"
+                
+                # Create markdown table header
+                columns = list(df.columns)
+                results_text += "| " + " | ".join(columns) + " |\n"
+                results_text += "|" + "|".join(["---"] * len(columns)) + "|\n"
+                
+                # Add rows (show first 15)
+                for i, (_, row) in enumerate(df.head(15).iterrows()):
+                    row_vals = []
+                    for val in row:
+                        if val is None or (isinstance(val, float) and pd.isna(val)):
+                            row_vals.append("—")
+                        else:
+                            # Truncate long values
+                            str_val = str(val)
+                            if len(str_val) > 50:
+                                str_val = str_val[:47] + "..."
+                            row_vals.append(str_val)
+                    results_text += "| " + " | ".join(row_vals) + " |\n"
+                
+                # Add note if there are more rows
+                if len(df) > 15:
+                    remaining = len(df) - 15
+                    results_text += f"\n*... and {remaining} more row(s)*"
+
+                await cl.Message(
+                    content=results_text,
                     author="System"
-                )
-
-                # FIX: cl.Dataframe requires a `name` for the element.
-                data_msg.elements = [
-                    cl.Dataframe(
-                        name="query_results",
-                        data=df,
-                        display="inline"
-                    )
-                ]
-
-                await data_msg.send()
+                ).send()
 
             except Exception as e:
-                logger.warning(f"Error displaying results as table: {e}")
-                # Fallback to formatted markdown with bullet points (no JSON)
+                logger.warning(f"Error formatting results table: {e}")
+                # Fallback to bullet-point format
                 results_text = "**📋 Query Results:**\n\n"
                 
-                # Show first 10 rows in markdown format
                 for i, row in enumerate(query_result[:10]):
                     results_text += f"**Record {i+1}:**\n"
                     if isinstance(row, dict):
                         for key, value in row.items():
-                            # Format each field as a bullet point
                             if value is None:
                                 value_display = "(empty)"
                             else:
-                                value_display = str(value)
+                                value_display = str(value)[:100]  # Truncate long values
                             results_text += f"  • **{key}:** {value_display}\n"
                     else:
                         results_text += f"  • {str(row)}\n"
                     results_text += "\n"
                 
-                # Add note if there are more rows
                 if len(query_result) > 10:
                     remaining = len(query_result) - 10
-                    results_text += f"*... and {remaining} more row(s) available*"
+                    results_text += f"*... and {remaining} more row(s)*"
 
                 await cl.Message(
                     content=results_text,
