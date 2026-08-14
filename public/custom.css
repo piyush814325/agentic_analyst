@@ -1,0 +1,101 @@
+/* Custom CSS for better UI labeling and tooltips */
+
+/* Add tooltips to attachment button */
+[aria-label*="Attach"],
+[class*="attach"],
+[class*="upload"],
+button[aria-label*="file"],
+button[aria-label*="attach"] {
+  position: relative;
+}
+
+/* Attachment button tooltip */
+button[aria-label*="Attach"]::after,
+button[aria-label*="attach"]::after,
+button[aria-label*="file"]::after {
+  content: "Upload Files (CSV/XLSX)";
+  position: absolute;
+  bottom: -40px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  z-index: 1000;
+}
+
+button[aria-label*="Attach"]:hover::after,
+button[aria-label*="attach"]:hover::after,
+button[aria-label*="file"]:hover::after {
+  opacity: 1;
+}
+
+/* Generic button tooltip styling */
+button:has(svg)::after {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  z-index: 1000;
+  bottom: -40px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+button:hover:has(svg)::after {
+  opacity: 1;
+}
+
+/* Improve button visibility with labels */
+.text-button button,
+[class*="composer"] button {
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.text-button button:hover,
+[class*="composer"] button:hover {
+  opacity: 0.8;
+  transform: scale(1.05);
+}
+
+/* Icon button styling for clarity */
+button[type="button"] svg {
+  min-width: 20px;
+  min-height: 20px;
+}
+
+/* Add visual feedback for interactive elements */
+[role="button"] {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+[role="button"]:hover {
+  opacity: 0.9;
+}
+
+/* Improve input field styling */
+input[type="text"],
+textarea {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: border-color 0.2s ease;
+}
+
+input[type="text"]:focus,
+textarea:focus {
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.1);
+}
