@@ -79,3 +79,4 @@ Thumbs.db
 # Temporary upload files
 /tmp/
 /temp/
+.vercel
