@@ -40,16 +40,40 @@ if [ ! -f ".env" ]; then
 fi
 
 # Display startup info
+PORT="${CHAINLIT_PORT:-8000}"
+for p in $(seq 8000 8100); do
+    if python3 - "$p" <<'PY'
+import socket, sys
+port = int(sys.argv[1])
+s = socket.socket()
+try:
+    s.bind(("127.0.0.1", port))
+except OSError:
+    raise SystemExit(1)
+finally:
+    s.close()
+PY
+    then
+        PORT="$p"
+        break
+    fi
+done
+
+if [ "$PORT" = "" ]; then
+    echo "[ERROR] No free port found between 8000 and 8100."
+    exit 1
+fi
+
 echo ""
 echo "===================================================================="
 echo "[SUCCESS] All checks passed!"
 echo ""
 echo "Starting Chainlit application..."
-echo "The UI will open at: http://localhost:8000"
+echo "The UI will open at: http://localhost:$PORT"
 echo ""
 echo "Press Ctrl+C to stop the server"
 echo "===================================================================="
 echo ""
 
 # Start Chainlit
-chainlit run app.py -w
+chainlit run app.py -w --port "$PORT"

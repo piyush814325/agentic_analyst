@@ -40,18 +40,33 @@ if not exist ".env" (
 )
 
 REM Display startup info
+set "CHAINLIT_PORT=%CHAINLIT_PORT%"
+if not defined CHAINLIT_PORT set "CHAINLIT_PORT=8000"
+
+for /L %%P in (8000,1,8100) do (
+    powershell -NoProfile -Command "$p = %%P; if (-not (Get-NetTCPConnection -LocalPort $p -ErrorAction SilentlyContinue)) { exit 0 } else { exit 1 }" >nul 2>&1
+    if not errorlevel 1 (
+        set "CHAINLIT_PORT=%%P"
+        goto port_found
+    )
+)
+
+echo [ERROR] No free port found between 8000 and 8100.
+exit /b 1
+
+:port_found
 echo.
 echo ====================================================================
 echo [SUCCESS] All checks passed!
 echo.
 echo Starting Chainlit application...
-echo The UI will open at: http://localhost:8000
+echo The UI will open at: http://localhost:%CHAINLIT_PORT%
 echo.
 echo Press Ctrl+C to stop the server
 echo ====================================================================
 echo.
 
 REM Start Chainlit
-chainlit run app.py -w
+chainlit run app.py -w --port %CHAINLIT_PORT%
 
 pause
